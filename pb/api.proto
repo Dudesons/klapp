@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package pb;
+
+import "google/api/annotations.proto";
+
+service Flip {
+    rpc IsFlip (FlipRequest) returns (FlipResponse) {
+        option (google.api.http) = {
+            get: "/v1/flip/{flip}/{target}"
+        };
+    }
+
+    rpc Health (HealthRequest) returns (HealthResponse) {
+        option (google.api.http) = {
+            get: "/v1/health"
+        };
+    }
+}
+
+message FlipRequest {
+    string flip = 1; // flip name
+    // TODO(Should be bytes ? or multiple path for each supported type)
+    string target = 2; // check if this value is flip (not required for boolean flip)
+
+}
+
+//message FlipRegisterRequest {
+//    string type
+//}
+
+message FlipResponse {
+    bool activated = 1;
+}
+
+message HealthRequest {
+}
+
+message HealthResponse {
+    string health = 1;
+    string flip_cache = 2;
+    string flip_store = 3;
+}
