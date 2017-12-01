@@ -1,0 +1,90 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "pb/api.proto",
+    "version": "version not set"
+  },
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/flip/{flip}/{target}": {
+      "get": {
+        "operationId": "IsFlip",
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/pbFlipResponse"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "flip",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "target",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "Flip"
+        ]
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "operationId": "Health",
+        "responses": {
+          "200": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/pbHealthResponse"
+            }
+          }
+        },
+        "tags": [
+          "Flip"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "pbFlipResponse": {
+      "type": "object",
+      "properties": {
+        "activated": {
+          "type": "boolean",
+          "format": "boolean"
+        }
+      }
+    },
+    "pbHealthResponse": {
+      "type": "object",
+      "properties": {
+        "health": {
+          "type": "string"
+        },
+        "flip_cache": {
+          "type": "string"
+        },
+        "flip_store": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
