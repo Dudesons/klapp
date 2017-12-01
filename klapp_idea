@@ -1,0 +1,13 @@
+grpc api
+rest porxy
+cache flip
+run in degrade mode
+audit log to mq or log or http
+hot reload (watch kv config ?)
+
+a flip can look like:
+true / false
+[strings]
+[ints]
+string
+int
