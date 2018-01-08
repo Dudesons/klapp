@@ -5,70 +5,125 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"net"
-	"github.com/dudesons/klapp/utils"
 	"github.com/dudesons/klapp/flip"
-	"github.com/dudesons/klapp/cache"
 	"github.com/kelseyhightower/envconfig"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"github.com/dudesons/klapp/config"
+	"fmt"
+	"github.com/dudesons/klapp/proxy"
 )
 
-type flipServer struct{
-	Cache     	map[string]*utils.Flip
-	ChanCache	chan *map[string]*utils.Flip
-	FlipStore 	utils.FlipStore
-	Config    	*utils.KlappConfig
-	Logger    	*zap.Logger
+type stringFlipOperator func(flipValue *string, flipValueRegistered interface{}) (*bool, error)
+type intFlipOperator func(flipValue *int64, flipValueRegistered interface{}) (*bool, error)
+
+type flipOperator struct {
+	string stringFlipOperator
+	int    intFlipOperator
 }
 
-func newFlipServer(chanCache chan *map[string]*utils.Flip, config *utils.KlappConfig, flipStore utils.FlipStore, logger *zap.Logger) utils.FlipServer {
-	return &flipServer{
-		ChanCache: chanCache,
-		Config: config,
-		FlipStore: flipStore,
-		Logger: logger,
-	}
+type flipServer struct{
+	cache     	map[string] *flip.Flip
+	chanCache	chan *map[string]*flip.Flip
+	flipStore 	flip.FlipStore
+	config    	*config.KlappConfig
+	logger    	*zap.Logger
+	operator    *flipOperator
 }
 
 func (s *flipServer) UpdateCache() {
-	go cache.WatchTree(&s.Config.FlipPrefix, &s.Config.ConsulEndpoint, s.ChanCache, s.Logger)
+	go s.flipStore.Watch(s.chanCache, s.logger)
 	for {
 		select {
-		case cacheFlips := <-s.ChanCache:
-			s.Logger.Info("flip_store_sync")
-			s.Cache = *cacheFlips
+		case cacheFlips := <-s.chanCache:
+			s.logger.Info("flip_store_sync")
+			s.cache = *cacheFlips
 		default:
 		}
 	}
 }
 
 func (s *flipServer) IsFlip(ctx context.Context, flipRequest *pb.FlipRequest) (*pb.FlipResponse, error) {
-	var isFlip *bool
-	var err error
-
-	if s.Config.CacheEnable {
-		_, ok := s.Cache[flipRequest.Flip]
+	s.logger.Info("is_cache_enable", zap.Bool("cache enable", s.config.CacheEnable))
+	if s.config.CacheEnable {
+		_, ok := s.cache[flipRequest.FeatureTag]
 		if ok {
-			s.Logger.Info("flip_request_in_cache", zap.String("key", flipRequest.Flip), zap.String("value", flipRequest.Target))
-			isFlip, err = flip.Factory(&flipRequest.Target, s.Cache[flipRequest.Flip])
-		} else {
-			s.Logger.Warn("flip_not_found")
-			return &pb.FlipResponse{Activated: false}, grpc.Errorf(codes.NotFound, "flip_not_found")
+			s.logger.Info("flip_request_in_cache", zap.String("key", flipRequest.FeatureTag))
+			return &pb.FlipResponse{Activated: *s.cache[flipRequest.FeatureTag].Activated}, nil
+		}
+		s.logger.Warn("flip_not_found")
+		return nil, status.Errorf(codes.NotFound, "flip_not_found")
+
+	}
+	s.logger.Info("flip_request_in_flipstore", zap.String("key", flipRequest.FeatureTag))
+	isFlip, err := s.flipStore.Get(&flipRequest.FeatureTag)
+	if err != nil {
+		s.logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.FeatureTag), zap.String("caused_by", err.Error()))
+		// TODO(Create a real error management)
+		return nil, status.Errorf(codes.Internal, err.Error())
+	}
+	return &pb.FlipResponse{Activated: *isFlip.Activated}, nil
+}
+
+func (s *flipServer) IsFlipString(ctx context.Context, flipRequest *pb.FlipStringRequest) (*pb.FlipResponse, error) {
+	if s.config.CacheEnable {
+		_, ok := s.cache[flipRequest.FeatureTag]
+		if ok {
+			s.logger.Info("flip_request_in_cache", zap.String("key", flipRequest.FeatureTag), zap.String("value", flipRequest.FeatureValue))
+			isFlip, err := s.operator.string(&flipRequest.FeatureValue, s.cache[flipRequest.FeatureTag].Content)
+			if err != nil {
+				s.logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.FeatureTag), zap.String("caused_by", err.Error()))
+				// TODO(Create a real error management)
+				return nil, status.Errorf(codes.Internal, err.Error())
+			}
+			return &pb.FlipResponse{Activated: *s.cache[flipRequest.FeatureTag].Activated && *isFlip}, nil
 		}
 
-	} else {
-		s.Logger.Info("flip_request_in_flipstore", zap.String("key", flipRequest.Flip), zap.String("value", flipRequest.Target))
-		isFlip, err = s.FlipStore.Get(flipRequest)
+		s.logger.Warn("flip_not_found")
+		return nil, status.Errorf(codes.NotFound, "flip_not_found")
 	}
+
+	s.logger.Info("flip_request_in_flipstore", zap.String("key", flipRequest.FeatureTag))
+	flipResponse, err := s.flipStore.Get(&flipRequest.FeatureTag)
+	isFlip, err := s.operator.string(&flipRequest.FeatureValue, flipResponse.Content)
 
 	if err != nil {
-		s.Logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.Flip), zap.String("caused_by", err.Error()))
+		s.logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.FeatureTag), zap.String("caused_by", err.Error()))
 		// TODO(Create a real error management)
-		return &pb.FlipResponse{Activated: *isFlip}, grpc.Errorf(codes.Internal, err.Error())
+		return &pb.FlipResponse{Activated: *flipResponse.Activated && *isFlip}, status.Errorf(codes.Internal, err.Error())
+	}
+	return &pb.FlipResponse{Activated: *flipResponse.Activated && *isFlip}, nil
+}
+
+func (s *flipServer) IsFlipInteger(ctx context.Context, flipRequest *pb.FlipIntegerRequest) (*pb.FlipResponse, error) {
+	if s.config.CacheEnable {
+		_, ok := s.cache[flipRequest.FeatureTag]
+		if ok {
+			s.logger.Info("flip_request_in_cache", zap.String("key", flipRequest.FeatureTag), zap.Int64("value", flipRequest.FeatureValue))
+			isFlip, err := s.operator.int(&flipRequest.FeatureValue, s.cache[flipRequest.FeatureTag].Content)
+			if err != nil {
+				s.logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.FeatureTag), zap.String("caused_by", err.Error()))
+				// TODO(Create a real error management)
+				return nil, status.Errorf(codes.Internal, err.Error())
+			}
+			return &pb.FlipResponse{Activated: *s.cache[flipRequest.FeatureTag].Activated && *isFlip}, nil
+		}
+
+		s.logger.Warn("flip_not_found")
+		return nil, status.Errorf(codes.NotFound, "flip_not_found")
 	}
 
-	return &pb.FlipResponse{Activated: *isFlip}, nil
+	s.logger.Info("flip_request_in_flipstore", zap.String("key", flipRequest.FeatureTag))
+	flipResponse, err := s.flipStore.Get(&flipRequest.FeatureTag)
+	isFlip, err := s.operator.int(&flipRequest.FeatureValue, flipResponse.Content)
 
+	if err != nil {
+		s.logger.Error("flip_request_error", zap.String("flip_requested", flipRequest.FeatureTag), zap.String("caused_by", err.Error()))
+		// TODO(Create a real error management)
+		return &pb.FlipResponse{Activated: *flipResponse.Activated && *isFlip}, status.Errorf(codes.Internal, err.Error())
+	}
+	return &pb.FlipResponse{Activated: *flipResponse.Activated && *isFlip}, nil
 }
 
 func (s *flipServer) Health(ctx context.Context, flipRequest *pb.HealthRequest) (*pb.HealthResponse, error) {
@@ -76,29 +131,58 @@ func (s *flipServer) Health(ctx context.Context, flipRequest *pb.HealthRequest) 
 }
 
 func Run() error {
-	chanCache := make(chan *map[string]*utils.Flip)
-	var config utils.KlappConfig
-	err := envconfig.Process("klapp", &config)
-	kv, err := flip.FlipNewStoreFactory(&config)
-	if err != nil {
-		panic(err)
-	}
+	chanCache := make(chan *map[string]*flip.Flip)
+	var conf config.KlappConfig
 
 	logger, err := zap.NewProduction()
 	if err != nil {
 		panic(err)
 	}
 
-	listen, err := net.Listen("tcp", ":50051")
+	logger.Info("Starting klapp server")
+	logger.Info("Retrieving configuration")
+	err = envconfig.Process("klapp", &conf)
+	if err != nil {
+		panic(err)
+	}
+	logger.Info("klapp_config", zap.Any("configuration", conf))
+	logger.Info("Retrieving flip store client")
+	kv, err := flip.NewFlipStore(&conf)
+	if err != nil {
+		panic(err)
+	}
+
+	listen, err := net.Listen("tcp", fmt.Sprintf(":%d", conf.RPCListen))
 	if err != nil {
 		return err
 	}
+	logger.Info("Listen port", zap.Int("port", conf.RPCListen))
 
-	flipServer := newFlipServer(chanCache, &config, kv, logger)
-	go flipServer.UpdateCache()
+	flipServer := &flipServer{
+		chanCache: chanCache,
+		config: &conf,
+		flipStore: kv,
+		logger: logger,
+		operator: &flipOperator{
+			string: flip.StringFlipOperator,
+			int: flip.IntFlipOperator,
+		},
+	}
+
+	// TODO(Maybe add a recovery strategy)
+	if conf.CacheEnable {
+		logger.Info("Starting cache")
+		go flipServer.UpdateCache()
+	}
+
+	// TODO(Maybe add a recovery strategy)
+	if conf.ProxyEnable {
+		logger.Info("Starting http proxy server")
+		go proxy.HttpProxy(&conf.ProxyToRPCEndpoint, &conf.ProxyListen)
+	}
 
 	server := grpc.NewServer()
 	pb.RegisterFlipServer(server, flipServer)
-	server.Serve(listen)
-	return nil
+	logger.Info("Klapp server started")
+	return server.Serve(listen)
 }
