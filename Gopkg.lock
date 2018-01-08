@@ -16,8 +16,7 @@
     "pkg/types",
     "version"
   ]
-  revision = "95a726a27e09030f9ccbd9982a1508f5a6d25ada"
-  version = "v3.2.13"
+  revision = "65464838ba7d2ddbc282f0330153e4fb999ac598"
 
 [[projects]]
   name = "github.com/coreos/go-semver"
@@ -100,10 +99,10 @@
   version = "v0.8.1"
 
 [[projects]]
+  branch = "master"
   name = "github.com/kelseyhightower/envconfig"
   packages = ["."]
-  revision = "f611eb38b3875cc3bd991ca91c51d06446afa14c"
-  version = "v1.3.0"
+  revision = "462fda1f11d8cad3660e52737b8beefd27acfb3f"
 
 [[projects]]
   branch = "master"
@@ -128,6 +127,12 @@
   packages = ["assert"]
   revision = "b91bfb9ebec76498946beb6af7c0230c7cc7ba6c"
   version = "v1.2.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/teh-cmc/cast"
+  packages = ["."]
+  revision = "3fd0de3a749295357f5ec75f326ff61bb87c3d9c"
 
 [[projects]]
   branch = "master"
@@ -242,6 +247,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3eb47b05fc7b5677586658edea9386f0b2d0dddcc8658aba62a04d26f60ab13b"
+  inputs-digest = "857229b4fe2f06f613c19112add5926e4713b596d43d66331c9446b57cecf0c3"
   solver-name = "gps-cdcl"
   solver-version = 1

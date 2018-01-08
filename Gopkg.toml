@@ -63,3 +63,7 @@
 [[constraint]]
   name = "google.golang.org/grpc"
   version = "1.9.0"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/teh-cmc/cast"
