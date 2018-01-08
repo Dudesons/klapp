@@ -1,14 +1,24 @@
 package flip
 
 import (
-	"strconv"
 	"strings"
-	"reflect"
+	"github.com/teh-cmc/cast"
+	"errors"
+	"strconv"
 )
 
-func rolloutOfString(flipTarget *string, flipValues reflect.Value) (*bool, error){
-	for i := 0; i < flipValues.Len(); i++ {
-		if strings.Compare(*flipTarget, flipValues.Index(i).Interface().(string)) == 0 {
+func flipResponse(b bool) *bool {
+	return &b
+}
+
+func rollOutOfString(flipTarget *string, flipValues interface{}) (*bool, error){
+	flips, err := cast.ToStringSliceE(flipValues)
+	if err != nil {
+		return flipResponse(false), err
+	}
+
+	for _, i := range flips {
+		if strings.Compare(*flipTarget, i) == 0 {
 			return flipResponse(true), nil
 		}
 	}
@@ -16,16 +26,14 @@ func rolloutOfString(flipTarget *string, flipValues reflect.Value) (*bool, error
 	return flipResponse(false), nil
 }
 
-func rolloutOfInt(flipTarget *string, flipValues reflect.Value) (*bool, error){
-	val, err := strconv.Atoi(*flipTarget)
-
+func rollOutOfInt(flipTarget *int64, flipValues interface{}) (*bool, error){
+	flips, err := cast.ToIntSliceE(flipValues)
 	if err != nil {
 		return flipResponse(false), err
 	}
 
-	for i := 0; i < flipValues.Len(); i++ {
-		// Stange case, reflect return me float64 for int
-		if val == int(flipValues.Index(i).Interface().(float64)) {
+	for _, i := range flips {
+		if *flipTarget == int64(i) {
 			return flipResponse(true), nil
 		}
 	}
@@ -33,15 +41,46 @@ func rolloutOfInt(flipTarget *string, flipValues reflect.Value) (*bool, error){
 	return flipResponse(false), nil
 }
 
-func isFlipString(flipTarget *string, flipValue string) (*bool, error){
-	return flipResponse(strings.Compare(*flipTarget, flipValue) == 0), nil
+func isFlipString(flipTarget *string, flipValue interface{}) (result *bool, err error){
+	defer func() {
+		if r := recover(); r != nil {
+			result = flipResponse(false)
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case int:
+				err = errors.New(strconv.Itoa(x))
+			case error:
+				err = x
+			default:
+				err = errors.New("unknown panic")
+			}
+		}
+	}()
+
+	return flipResponse(strings.Compare(*flipTarget, flipValue.(string)) == 0), nil
 }
 
-func isFlipInt(flipTarget *string, flipValue int) (*bool, error){
-	val, err := strconv.Atoi(*flipTarget)
+func isFlipInt(flipTarget *int64, flipValue interface{}) (result *bool, err error){
+	defer func() {
+		if r := recover(); r != nil {
+			result = flipResponse(false)
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case int:
+				err = errors.New(strconv.Itoa(x))
+			case error:
+				err = x
+			default:
+				err = errors.New("unknown panic")
+			}
+		}
+	}()
 
+	val, err := cast.ToIntE(flipValue)
 	if err != nil {
-		return flipResponse(false), err
+		panic(err)
 	}
-	return flipResponse(val == flipValue), nil
+	return flipResponse(*flipTarget == int64(val)), nil
 }
