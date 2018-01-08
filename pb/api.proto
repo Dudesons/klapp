@@ -7,7 +7,19 @@ import "google/api/annotations.proto";
 service Flip {
     rpc IsFlip (FlipRequest) returns (FlipResponse) {
         option (google.api.http) = {
-            get: "/v1/flip/{flip}/{target}"
+            get: "/v1/isflip/{feature_tag}"
+        };
+    }
+
+    rpc IsFlipString (FlipStringRequest) returns (FlipResponse) {
+        option (google.api.http) = {
+            get: "/v1/isflip/string/{feature_tag}/{feature_value}"
+        };
+    }
+
+    rpc IsFlipInteger (FlipIntegerRequest) returns (FlipResponse) {
+        option (google.api.http) = {
+            get: "/v1/isflip/integer/{feature_tag}/{feature_value}"
         };
     }
 
@@ -19,15 +31,20 @@ service Flip {
 }
 
 message FlipRequest {
-    string flip = 1; // flip name
-    // TODO(Should be bytes ? or multiple path for each supported type)
-    string target = 2; // check if this value is flip (not required for boolean flip)
+    string feature_tag = 1; // flip name
+}
+
+message FlipStringRequest {
+    string feature_tag = 1; // flip name
+    string feature_value = 2; // check if this value is flip
 
 }
 
-//message FlipRegisterRequest {
-//    string type
-//}
+message FlipIntegerRequest {
+    string feature_tag = 1; // flip name
+    int64  feature_value = 2; // check if this value is flip
+
+}
 
 message FlipResponse {
     bool activated = 1;
