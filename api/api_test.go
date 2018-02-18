@@ -1,73 +1,69 @@
 package api
 
-//import (
-//	consulapi "github.com/hashicorp/consul/api"
-//	"testing"
-//	"fmt"
-//	"encoding/json"
-//	"github.com/dudesons/klapp/pb"
-//	"google.golang.org/grpc"
-//	"golang.org/x/net/context"
-//	"github.com/stretchr/testify/assert"
-//	"time"
-//	"github.com/dudesons/klapp/flip"
-//)
-//
-//func newConsulClient(t *testing.T) *consulapi.KV{
-//	config := consulapi.DefaultConfig()
-//	config.Address = "127.0.0.1:8500"
-//	consul, err := consulapi.NewClient(config)
-//	if err != nil {
-//		t.Error(err)
-//	}
-//
-//	return consul.KV()
-//}
-//
-//func setupConsul(t *testing.T, kv *consulapi.KV, fixtures string) {
-//	flips := []*flip.Flip{}
-//	json.Unmarshal([]byte(fixtures), &flips)
-//
-//	for _, i := range flips {
-//		v, err := json.Marshal(i)
-//		if err != nil {
-//			t.Error(err)
-//		}
-//		kv.Put(&consulapi.KVPair{Key: fmt.Sprintf("klapp/flips/%s", *i.Name), Value: v}, nil)
-//	}
-//}
-//
-//func cleanConsul(t *testing.T, kv *consulapi.KV) {
-//	_, err := kv.DeleteTree("klapp/flips/", nil)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//}
-//
-//func TestFlipServer_IsFlip_Integration(t *testing.T) {
-//	kv := newConsulClient(t)
-//	address := "127.0.0.1:50051"
-//	conn, err := grpc.Dial(address, grpc.WithInsecure())
-//
-//	if err != nil {
-//		t.Errorf("did not connect: %v", err)
-//	}
-//
-//	defer conn.Close()
-//
-//	c := pb.NewFlipClient(conn)
-//
-//	setupConsul(t, kv, flip_fixture)
-//	time.Sleep(2)
-//
-//	for _, i := range flipNamesForBool {
-//		r, err := c.IsFlip(context.Background(), &pb.FlipRequest{FeatureTag: i.Flip})
-//		t.Log(r)
-//		t.Log(err)
-//		if i.Success {
-//			assert.Equal(t, i.Success, r.Activated, fmt.Sprintf("should be equal, flip: %s, success: %b, activated: %b", i.Flip, i.Success, r.Activated))
-//		}
-//	}
-//
-//	cleanConsul(t, kv)
-//}
+import (
+	"testing"
+	"github.com/dudesons/klapp/pb"
+	"fmt"
+	"github.com/dudesons/klapp/flip"
+	"github.com/dudesons/klapp/config"
+	"google.golang.org/grpc"
+	"encoding/json"
+	"golang.org/x/net/context"
+	"github.com/stretchr/testify/assert"
+	"github.com/kelseyhightower/envconfig"
+)
+
+
+
+
+func setupKV(t *testing.T, kv flip.FlipStore, fixtures string) {
+	flips := []*flip.Flip{}
+	json.Unmarshal([]byte(fixtures), &flips)
+
+	for _, i := range flips {
+		err := kv.Put(fmt.Sprintf("klapp/flips/%s", *i.Name), i)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+func cleanKV(t *testing.T, kv flip.FlipStore) {
+	err := kv.Delete("klapp/flips/", true)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+// TODO(Rework this test is an E2E)
+func TestFlipServer_IsFlip_Integration(t *testing.T) {
+	var conf config.KlappConfig
+	err := envconfig.Process("klapp", &conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kv, err := flip.NewFlipStore(&conf)
+	address := "127.0.0.1:50051"
+	conn, err := grpc.Dial(address, grpc.WithInsecure())
+
+	if err != nil {
+		t.Errorf("did not connect: %v", err)
+	}
+
+	defer conn.Close()
+	defer cleanKV(t, kv)
+
+	c := pb.NewFlipClient(conn)
+
+	setupKV(t, kv, flip.Flip_fixture)
+
+	for _, i := range flip.FlipNamesForBool {
+		r, err := c.IsFlip(context.Background(), &pb.FlipRequest{FeatureTag: i.Flip})
+		t.Log(r)
+		t.Log(err)
+		if i.Success {
+			assert.Equal(t, i.Success, r.Activated, fmt.Sprintf("should be equal, flip: %s, success: %b, activated: %b", i.Flip, i.Success, r.Activated))
+		}
+	}
+}

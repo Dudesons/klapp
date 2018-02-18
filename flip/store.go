@@ -22,6 +22,12 @@ type Flip struct {
 	Content     interface{} `json:"content"`
 }
 
+
+type StoreWriter interface {
+	// Get a value given its key
+	Put(key string, value []byte, options *store.WriteOptions) error
+}
+
 type StoreReader interface {
 	// Get a value given its key
 	Get(key string) (*store.KVPair, error)
@@ -31,15 +37,23 @@ type StoreWatcher interface {
 	WatchTree(directory string, stopCh <-chan struct{}) (<-chan []*store.KVPair, error)
 }
 
-type storeReaderWatcher interface {
-	// Get a value given its key
-	Get(key string) (*store.KVPair, error)
-	WatchTree(directory string, stopCh <-chan struct{}) (<-chan []*store.KVPair, error)
+type StoreCleanerWriterReaderWatcher interface {
+	StoreWriter
+	StoreReader
+	StoreWatcher
+	StoreCleaner
+}
+
+type StoreCleaner interface {
+	Delete(key string) error
+	DeleteTree(directory string) error
 }
 
 type FlipStore interface {
 	Get(featureTag *string) (*Flip, error)
 	Watch(flipUpdate chan *map[string]*Flip, logger *zap.Logger)
+	Put(key string, flip *Flip) error
+	Delete(target string, isDir bool) error
 }
 
 // FakeStore is used only for running unit test
@@ -110,6 +124,22 @@ func (fs *FakeStore) WatchTree(directory string, stopCh <-chan struct{}) (<-chan
 	return chanKV, nil
 }
 
+func (fs *FakeStore) Put(key string, value []byte, options *store.WriteOptions) error {
+	var err error
+	return err
+}
+
+func (fs *FakeStore) Delete(key string) error  {
+	var err error
+	return err
+}
+
+func (fs *FakeStore) DeleteTree(directory string) error  {
+	var err error
+	return err
+}
+
+
 func initStore() {
 	consul.Register()
 	etcd.Register()
@@ -118,7 +148,7 @@ func initStore() {
 }
 
 func NewFlipStore (config *config.KlappConfig) (FlipStore, error) {
-	var kvClient storeReaderWatcher
+	var kvClient StoreCleanerWriterReaderWatcher
 	var err error
 
 	if config.FlipStoreType == "mock" {
@@ -138,7 +168,7 @@ func NewFlipStore (config *config.KlappConfig) (FlipStore, error) {
 }
 
 type FlipStoreClient struct {
-	kvClient storeReaderWatcher
+	kvClient StoreCleanerWriterReaderWatcher
 	Config *config.KlappConfig
 }
 
@@ -174,26 +204,45 @@ func (f *FlipStoreClient) Watch(flipUpdate chan *map[string]*Flip, logger *zap.L
 			zap.String("flip_store_prefix", f.Config.FlipPrefix))
 	}
 
-	select {
-	case pairs := <-events:
-		flips := map[string]*Flip{}
-		logger.Info("cache_watch_tree_event_trigger")
-		// If there is a need to optimize we can try to send by chunk, this proto is all cache
-		for _, pair := range pairs {
-			flipPayload := Flip{}
-			err = json.Unmarshal(pair.Value, &flipPayload)
+	for {
+		select {
+		case pairs := <-events:
+			flips := map[string]*Flip{}
+			logger.Info("cache_watch_tree_event_trigger")
+			// If there is a need to optimize we can try to send by chunk, this proto is all cache
+			for _, pair := range pairs {
+				flipPayload := Flip{}
+				err = json.Unmarshal(pair.Value, &flipPayload)
 
-			if err != nil {
-				logger.Error(
-					"cache_watch_tree_decode_failure",
-					zap.String("caused_by", err.Error()),
-					zap.String("flip_payload", string(pair.Value)))
-			}
+				if err != nil {
+					logger.Error(
+						"cache_watch_tree_decode_failure",
+						zap.String("caused_by", err.Error()),
+						zap.String("flip_payload", string(pair.Value)))
+				}
 
-			if flipPayload.Name != nil {
-				flips[*flipPayload.Name] = &flipPayload
+				if flipPayload.Name != nil {
+					flips[*flipPayload.Name] = &flipPayload
+				}
 			}
+			flipUpdate <- &flips
 		}
-		flipUpdate <- &flips
 	}
+}
+
+func (f *FlipStoreClient) Put(key string, flip *Flip) error {
+	val, err := json.Marshal(flip)
+	if err != nil {
+		return err
+	}
+
+	return f.kvClient.Put(key, val, nil)
+}
+
+func (f *FlipStoreClient) Delete(target string, isDir bool) error  {
+	if isDir {
+		return f.kvClient.DeleteTree(target)
+	}
+
+	return f.kvClient.Delete(target)
 }

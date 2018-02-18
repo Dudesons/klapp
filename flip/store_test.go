@@ -20,7 +20,7 @@ func TestFlipStoreClient_Get(t *testing.T) {
 	store, err := NewFlipStore(&conf)
 	assert.Nil(t, err, "get a flip store should not fail")
 
-	for _, fixture := range flipsFixture {
+	for _, fixture := range FlipsFixture {
 		resp, err := store.Get(&fixture.Flip)
 		assert.Nil(t, err, fmt.Sprintf("Flip request on %s should not fail", fixture.Flip))
 

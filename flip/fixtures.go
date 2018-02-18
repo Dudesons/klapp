@@ -1,6 +1,6 @@
 package flip
 
-var flip_fixture = `
+var Flip_fixture = `
 [
   {
     "activated": true,
@@ -14,7 +14,7 @@ var flip_fixture = `
   }
 ]
 `
-var flip_string_fixture = `
+var Flip_string_fixture = `
 [
   {
     "activated": true,
@@ -30,7 +30,7 @@ var flip_string_fixture = `
   }
 ]
 `
-var flip_int_fixture = `
+var Flip_int_fixture = `
 [
   {
     "activated": true,
@@ -54,7 +54,7 @@ type Fixture struct {
 	FlipType int // 0=bool 1=string 2=stringslice 3=int 4=intslice
 }
 
-var flipNamesForBool = []Fixture{
+var FlipNamesForBool = []Fixture{
 	{Flip: "boolon", Success: true},
 	{Flip: "booloff", Success: false},
 	{Flip: "string", Target: "mystring", Success: false},
@@ -69,7 +69,7 @@ var flipNamesForBool = []Fixture{
 	//{Flip: "dontexist", Success: false},
 }
 
-var flipsFixture = []Fixture{
+var FlipsFixture = []Fixture{
 	{Flip: "boolon", Success: true, FlipType: 0},
 	{Flip: "booloff", Success: false},
 	{Flip: "string", Target: "mystring", Success: true, FlipType: 1},

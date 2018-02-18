@@ -11,6 +11,10 @@ func flipResponse(b bool) *bool {
 	return &b
 }
 
+func flipTag(s string) *string {
+	return &s
+}
+
 func rollOutOfString(flipTarget *string, flipValues interface{}) (*bool, error){
 	flips, err := cast.ToStringSliceE(flipValues)
 	if err != nil {
